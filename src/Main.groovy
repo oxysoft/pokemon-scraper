@@ -10,10 +10,13 @@ import org.jsoup.select.Elements
 public class Main {
 	public static String URL_LIST = "http://pokemondb.net/pokedex/national"
 	public static String URL_ABILITIES = "http://bulbapedia.bulbagarden.net/wiki/Ability"
+	public static String URL_MOVES = "http://bulbapedia.bulbagarden.net/wiki/List_of_moves"
+	public static String URL_MOVES_DESC = "http://pokemondb.net/move/all"
 
 	public static void main(String[] args) {
-		scrapAbilities()
-		scrapPokemons()
+//		scrapAbilities()
+//		scrapPokemons()
+		scrapMoves()
 	}
 
 	static void scrapAbilities() {
@@ -56,6 +59,67 @@ public class Main {
 		}
 
 		Data.abilities = Data.abilities.sort { it.key }
+	}
+
+	static void scrapMoves() {
+		Document doc = Jsoup.connect(URL_MOVES).get()
+
+		Elements cells = doc.select("table")[0].select("td")[1..-1]
+
+		Move move = null
+
+		for (int i = 0; i < cells.size(); i++) {
+			Element td = cells[i]
+			String cell = cells[i].text().trim()
+
+			switch (i % 9) {
+				case 0:
+					move = new Move()
+					move.id = cell.toInteger()
+					break
+				case 1:
+					move.name = cell.replace("*", "")
+					break
+				case 2:
+					move.type = PokeType.byName(cell)
+					break
+				case 3:
+					move.category = MoveCategory.byName(cell)
+					break
+				case 4:
+					move.contest = ContestType.byName(cell)
+					break
+				case 5:
+					parseVariableGenProperty(td, move.pps)
+					break
+				case 6:
+					if (td.text() != "*")
+						parseVariableGenProperty(td, move.powers)
+					break
+				case 7:
+					parseVariableGenProperty(td, move.accs)
+					break
+				case 8:
+					// the generation it was added in, don't care!
+					Data.moves[move.name] = move
+					break
+			}
+		}
+
+		// descriptions that we grab from here
+		doc = Jsoup.connect(URL_MOVES_DESC).get()
+		cells = doc.select("td")
+		final int nCols = 9
+
+		for (int i = 0; i < Data.moves.size(); i++) {
+			String name = cells[i * nCols].text()
+			String desc = cells[i * nCols + 7].text()
+
+			Data.moves[name].description = desc
+			println Data.moves[name]
+		}
+
+		null
 	}
 
 	static def scrapPokemonLinks() {
@@ -115,6 +179,43 @@ public class Main {
 		]
 	}
 
+	static void parseVariableGenProperty(Element elem, Map<Integer, Number> props) {
+		int val = 0
+		String cell = elem.text().replace("%", "")
+
+		if (cell.contains("—")) {
+			val = -1
+		} else if (cell.contains("*")) {
+			elem.getElementsByTag("span")[0].attr("title").split(", ").each {
+				try {
+					List<Integer> vals = parseValueGenRange(it.replace("%", ""))
+
+					vals[1 .. -1].each {
+						props[it] = vals[0]
+					}
+				} catch(ignored) {
+				}
+			}
+
+			val = cell.replace("*", "").toInteger()
+		} else {
+			val = cell.toInteger()
+		}
+
+		props[6] = val
+	}
+
+	static List<Integer> parseValueGenRange(String text) {
+		def tokens = text.split(" ")
+		int v = tokens[0].toDouble().toInteger()
+		def gens = tokens[-1].split("-").collect { Roman.toInt(it) }
+
+		if (gens.size() > 1)
+			gens = [gens[0] .. gens[1]]
+
+		[v, gens].flatten() as List<Integer>
+	}
+
 	static List<Double> parseGenderRates(String text) {
 		text.split(", ").collect {
 			Double.parseDouble it.split(" ")[0][0..-2]
@@ -146,7 +247,7 @@ public class Main {
 		// types
 		i = 0
 		td[1].select("a").each {
-			p.types[i] = PokeType.getByName(it.text())
+			p.types[i] = PokeType.byName(it.text())
 			i++
 		}
 
@@ -288,11 +389,5 @@ public class Main {
 		}
 
 		null
-	}
-
-	static List<Move> scrapMoves() {
-		for (int gen = 1; gen <= 6; gen++) {
-			Document doc = "http://pokemondb.net/move/generation/$gen"
-		}
 	}
 }

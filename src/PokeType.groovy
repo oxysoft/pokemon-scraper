@@ -25,7 +25,7 @@ enum PokeType {
 	private PokeType() {
 	}
 
-	public static PokeType getByName(String name) {
+	public static PokeType byName(String name) {
 		def ret = values().find { name.equalsIgnoreCase(it.name()) }
 
 		if (!ret)
